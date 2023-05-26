@@ -1,8 +1,9 @@
 [package]
-name = "lsm-tree-storage-engine"
+name = "lsm_tree_storage_engine"
 authors = ["Nrishinghananda Roy <roynrishingha@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [dependencies]
+rand = "0.8"
