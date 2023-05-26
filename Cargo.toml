@@ -1,0 +1,8 @@
+[package]
+name = "lsm-tree-storage-engine"
+authors = ["Nrishinghananda Roy <roynrishingha@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
