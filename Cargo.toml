@@ -3,7 +3,7 @@ name = "lsm_tree_storage_engine"
 authors = ["Nrishinghananda Roy <roynrishingha@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
-publish = false
+publish = true
 
-[dependencies]
+[dev-dependencies]
 rand = "0.8"
