@@ -1,9 +1,21 @@
 [package]
 name = "lsm_tree_storage_engine"
+description = "LSM Tree based Storage Engine"
 authors = ["Nrishinghananda Roy <roynrishingha@gmail.com>"]
 version = "0.1.0"
-edition = "2021"
+categories = ["command-line-utilities"]
+keywords = ["cli", "database"]
+repository = "https://github.com/roynrishingha/lsm-tree-storage-engine"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
 publish = true
+edition = "2021"
+
+[badges]
+maintenance = { status = "experimental" }
+
+[lib]
+path = "src/lib.rs"
 
 [dev-dependencies]
 rand = "0.8"

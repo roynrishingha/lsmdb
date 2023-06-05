@@ -29,7 +29,7 @@
 //! Here's an example demonstrating the basic usage of the storage engine:
 //!
 //! ```rust
-//! use lsm_tree_storage_engine::engine::StorageEngine;
+//! # use lsm_tree_storage_engine::engine::StorageEngine;
 //!
 //! fn main() {
 //!     // Create a new storage engine instance
@@ -53,7 +53,7 @@
 //! The library includes test modules to ensure the correctness of its components. Run the tests using `cargo test`:
 //!
 //! ```bash
-//! $ cargo test
+//! cargo test
 //! ```
 //!
 //! # Contributing
