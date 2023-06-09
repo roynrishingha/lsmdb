@@ -15,13 +15,13 @@
 //!
 //! ```toml
 //! [dependencies]
-//! lsm_tree_storage_engine = "0.1.0"
+//! lsmdb = "0.1.0"
 //! ```
 //!
 //! Import the engine module into your Rust code:
 //!
 //! ```rust
-//! use lsm_tree_storage_engine::engine::{StorageEngine, StorageEngineEntry};
+//! use lsmdb::engine::{StorageEngine, StorageEngineEntry};
 //! ```
 //!
 //! # Examples
@@ -29,7 +29,7 @@
 //! Here's an example demonstrating the basic usage of the storage engine:
 //!
 //! ```rust
-//! # use lsm_tree_storage_engine::engine::StorageEngine;
+//! # use lsmdb::engine::StorageEngine;
 //!
 //! fn main() {
 //!     // Create a new storage engine instance
@@ -58,7 +58,7 @@
 //!
 //! # Contributing
 //!
-//! Contributions to this lsm tree storage engine library are welcome! If you encounter any issues or have suggestions for improvements, please open an issue or submit a pull request on the GitHub repository: [link-to-repository](https://github.com/roynrishingha/lsm-tree-storage-engine)
+//! Contributions to this lsm tree storage engine library are welcome! If you encounter any issues or have suggestions for improvements, please open an issue or submit a pull request on the GitHub repository: [link-to-repository](https://github.com/roynrishingha/lsmdb)
 //!
 //! # License
 //!

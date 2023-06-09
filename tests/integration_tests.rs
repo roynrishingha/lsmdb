@@ -1,4 +1,4 @@
-use lsm_tree_storage_engine::engine::*;
+use lsmdb::engine::*;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
