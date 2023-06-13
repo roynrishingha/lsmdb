@@ -1,41 +1,29 @@
 # Architecture
 
-## Storage Engine Public APIs
+`lsmdb` provides efficient storage and retrival of key-value pair.
 
-- `put(key, value)`: store a key-value pair in the LSM tree.
-- `delete(key)`: remove a key and its corresponding value.
-- `get(key)`: get the value corresponding to a key.
-- `scan(range)`: get a range of key-value pairs.
+## Components of `lsmdb`
 
-Internal APIs
-- `flush()`: ensure all the operations before sync are persisted to the disk.
+The components of the `lsmdb` Storage Engine
 
-## Data Flow
+### MemTable
 
-### Write Flow
+A MemTable (short for memory table) is an in-memory data structure that stores key-value pairs. It acts as the primary read/write interface for the storage engine. The MemTable is typically implemented as a sorted data structure, such as a skip list or a red-black tree, to allow efficient lookups and updates.
 
-1. Write the key-value pair to WAL (write ahead log), so that it can be recovered if storage engine crashes.
-2. Write the key-value pair to memtable. After writing to WAL and MemTable completes, we can notify user that the write operation is completed.
-3. When a memtable is full, flush it to the disk as an SST file in the background.
-4. Compact files into lower levels to maintain a good shape for the LSM Tree, so that the read amplification is low.
+When a write operation (e.g., insert, update, delete) occurs, the key-value pair is first written to the MemTable. As the MemTable resides in memory, write operations can be performed quickly. However, this data is not durable and can be lost in the event of a crash or system failure.
 
-### Read Flow
+### Write-Ahead Log (WAL)
 
-1. Probe all the memtables from latest to oldest.
-2. If the key is not found, we will then search the entire LSM tree containing SSTs to find the data.
+The Write-Ahead Log, often referred to as the WAL, is a mechanism used to provide durability for write operations. It ensures that data modifications are logged before they are applied to the MemTable. The WAL is typically implemented as an append-only file or a series of log segments.
 
----
+When a write operation is received, the key-value pair is first appended to the WAL. This ensures that the modification is durably stored on disk, even if the MemTable resides only in memory. In the event of a crash or system failure, the WAL can be replayed to recover the data modifications and bring the MemTable back to a consistent state.
 
-## LSM Tree features
+### SSTable (Sorted String Table)
 
-1. Data are immutable on persistent storage, which means that it is easier to offload the background tasks (compaction) to remote servers. It is also feasible to directly store and serve data from cloud-native storage systems like S3.
-2. An LSM tree can balance between read, write and space amplification by changing the compaction algorithm. The data structure itself is super versatile and can be optimized for different workloads.
+An SSTable, or Sorted String Table, is an immutable on-disk data structure that stores key-value pairs in a sorted order. It serves as the persistent storage layer for the LSM Tree-based engine. SSTables are typically stored as multiple files, each containing a sorted range of key-value pairs.
 
-## LSM Tree vs B-Tree
+When the MemTable reaches a certain threshold size, it is "flushed" to disk as a new SSTable file. The MemTable is atomically replaced with an empty one, allowing new write operations to continue. This process is known as a "memtable flush." 
 
-In RB-Tree and B-Tree, all values are overwritten at it's original memory or disk space when we update the value corresponding to the the key.
-But in LSM Tree, all write operations, i.e., insert, update, delete, are performed in somewhere else. 
-This operations will be batched into SST (sorted string table) files and can be written to the disk. 
-Once written to the disk, the file will not be changed.
-These operations are applied lazily on disk with a special task called **compaction**. 
-The compaction will merge multiple SST files and remove unused data.
+Flushing the MemTable to disk has two benefits: it frees up memory for new write operations, and it creates an immutable on-disk snapshot of the MemTable contents.
+
+The SSTable files are designed to optimize read operations. Since the data is sorted, key lookups can be performed efficiently using techniques like binary search or Bloom filters. SSTables are typically organized into multiple levels, where each level contains SSTables of increasing size. This multi-level organization allows for efficient read and write operations while minimizing disk I/O.
