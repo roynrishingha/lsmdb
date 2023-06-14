@@ -5,3 +5,5 @@
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-lsmdb-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/lsmdb)
 
 lsmdb is an efficient storage engine that implements the Log-Structured Merge Tree (LSM-Tree) data structure, designed specifically for handling key-value pairs.
+
+See the [Architecture](Architecture.md) for in depth information.
