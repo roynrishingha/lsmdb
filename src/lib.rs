@@ -18,3 +18,4 @@
 #![allow(unused)]
 
 mod memtable;
+mod write_ahead_log;
