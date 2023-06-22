@@ -1,0 +1,257 @@
+const BLOCK_SIZE: usize = 4 * 1024; // 4KB
+
+const SIZE_OF_U32: usize = std::mem::size_of::<u32>();
+
+use std::{collections::HashMap, io, sync::Arc};
+
+pub(crate) struct Block {
+    data: Vec<u8>,
+    index: HashMap<Arc<Vec<u8>>, usize>,
+    entry_count: usize,
+}
+
+impl Block {
+    /// Creates a new empty Block.
+    pub(crate) fn new() -> Self {
+        Block {
+            data: Vec::with_capacity(BLOCK_SIZE),
+            index: HashMap::new(),
+            entry_count: 0,
+        }
+    }
+
+    /// Checks if the Block is full given the size of an entry.
+    pub(crate) fn is_full(&self, entry_size: usize) -> bool {
+        self.data.len() + entry_size > BLOCK_SIZE
+    }
+
+    /// Sets an entry with the provided key and value in the Block.
+    ///
+    /// Returns an `io::Result` indicating success or failure. An error is returned if the Block
+    /// is already full and cannot accommodate the new entry.
+    pub(crate) fn set_entry(&mut self, key: &[u8], value: &[u8]) -> io::Result<()> {
+        // Calculate the total size of the entry, including the key, value, and the size of the length prefix.
+        let entry_size = key.len() + value.len() + SIZE_OF_U32;
+
+        // Check if the Block is already full and cannot accommodate the new entry.
+        if self.is_full(entry_size) {
+            return Err(io::Error::new(io::ErrorKind::OutOfMemory, "Block is full"));
+        }
+
+        // Convert the length of the value to a little-endian byte array.
+        let value_len = value.len() as u32;
+
+        // Create the entry by concatenating the length prefix, key, and value.
+        let entry: Vec<u8> = [&value_len.to_le_bytes(), key, value].concat();
+
+        // Get the current offset in the data vector and extend it with the new entry.
+        let offset = self.data.len();
+        self.data.extend_from_slice(&entry);
+
+        // Insert the key and its corresponding offset into the index hashmap.
+        self.index.insert(Arc::new(key.to_owned()), offset);
+
+        // Increment the entry count.
+        self.entry_count += 1;
+
+        Ok(())
+    }
+
+    /// Removes the entry with the provided key from the Block.
+    ///
+    /// Returns `true` if an entry was found and removed, `false` otherwise.
+    pub(crate) fn remove_entry(&mut self, key: &[u8]) -> bool {
+        // Check if the key exists in the index map.
+        if let Some(offset) = self.index.remove(&Arc::new(key.to_owned())) {
+            // Calculate the start and end positions of the entry to be removed.
+
+            // The start position is the offset in the data vector.
+            let start = offset;
+
+            // The end position is calculated as follows:
+            // - Add the size of the length prefix (SIZE_OF_U32).
+            // - Add the length of the key.
+            // - Find the position of the first zero byte in the remaining data, starting from the offset.
+            //   This indicates the end of the entry.
+            let end = start
+                + SIZE_OF_U32
+                + key.len()
+                + self.data[start + SIZE_OF_U32..]
+                    .iter()
+                    .position(|&byte| byte == 0)
+                    .unwrap_or(0);
+
+            // Clear the entry in the data vector by filling it with zeros.
+            for byte in &mut self.data[start..end] {
+                *byte = 0;
+            }
+
+            // Decrease the entry count.
+            self.entry_count -= 1;
+
+            // Return true to indicate that an entry was found and removed.
+            true
+        } else {
+            // Return false to indicate that the entry was not found.
+            false
+        }
+    }
+
+    /// Retrieves the value associated with the provided key from the Block.
+    ///
+    /// Returns `Some(value)` if the key is found in the Block, `None` otherwise.
+    pub(crate) fn get_value(&self, key: &[u8]) -> Option<Vec<u8>> {
+        // Check if the key exists in the index.
+        if let Some(&offset) = self.index.get(&Arc::new(key.to_owned())) {
+            // Calculate the starting position of the value in the data vector.
+            let start = offset + SIZE_OF_U32 + key.len();
+
+            // Extract the bytes representing the length of the value from the data vector.
+            let value_len_bytes = &self.data[offset..offset + SIZE_OF_U32];
+
+            // Convert the value length bytes into a u32 value using little-endian byte order.
+            let value_len = u32::from_le_bytes(value_len_bytes.try_into().unwrap()) as usize;
+
+            // Calculate the ending position of the value in the data vector.
+            let end = start + value_len;
+
+            // Extract the value bytes from the data vector and return them as a new Vec<u8>.
+            Some(self.data[start..end].to_vec())
+        } else {
+            // The key was not found in the index, return None.
+            None
+        }
+    }
+
+    /// Returns the number of entries in the Block.
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entry_count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_empty_block_creation() {
+        let block = Block::new();
+        assert_eq!(block.data.len(), 0);
+        assert_eq!(block.data.capacity(), BLOCK_SIZE);
+        assert_eq!(block.index.len(), 0);
+        assert_eq!(block.entry_count, 0);
+    }
+
+    #[test]
+    fn test_is_full() {
+        let block = Block::new();
+        assert!(!block.is_full(10));
+        assert!(block.is_full(BLOCK_SIZE + 1));
+    }
+
+    #[test]
+    fn test_set_entry() {
+        let mut block = Block::new();
+        let key: Vec<u8> = vec![1, 2, 3];
+        let value: Vec<u8> = vec![4, 5, 6];
+
+        let res = block.set_entry(&key, &value);
+        // check if we have IO error.
+        assert!(!res.is_err());
+
+        assert_eq!(block.data.len(), key.len() + value.len() + SIZE_OF_U32);
+        assert_eq!(block.entry_count, 1);
+        assert_eq!(block.index.len(), 1);
+    }
+
+    #[test]
+    fn test_set_and_get_value() {
+        let mut block = Block::new();
+        let key: &[u8] = &[1, 2, 3];
+        let value: &[u8] = &[4, 5, 6];
+
+        // Set the key-value pair
+        let res = block.set_entry(key, value);
+        assert!(!res.is_err());
+
+        // Retrieve the value using the key
+        let retrieved_value = block.get_value(key);
+        assert_eq!(retrieved_value, Some(value.to_vec()));
+    }
+
+    #[test]
+    fn test_set_and_remove_entry() {
+        let mut block = Block::new();
+        let key1: Vec<u8> = vec![1, 2, 3];
+        let value1: Vec<u8> = vec![4, 5, 6];
+        let key2: Vec<u8> = vec![7, 8, 9];
+        let value2: Vec<u8> = vec![10, 11, 12];
+        let key3: Vec<u8> = vec![13, 14, 15];
+        let value3: Vec<u8> = vec![16];
+
+        block.set_entry(&key1, &value1);
+        assert_eq!(block.entry_count, 1);
+        assert_eq!(block.get_value(&key1), Some(value1));
+
+        block.set_entry(&key2, &value2);
+        assert_eq!(block.entry_count, 2);
+        assert_eq!(block.get_value(&key2), Some(value2));
+
+        block.set_entry(&key3, &value3);
+        assert_eq!(block.entry_count, 3);
+        assert_eq!(block.get_value(&key3), Some(value3.clone()));
+
+        let entry_count_before_removal = block.entry_count();
+        let result = block.remove_entry(&key1);
+        assert!(result);
+        assert_eq!(block.entry_count(), entry_count_before_removal - 1);
+        assert_eq!(block.get_value(&key1), None);
+    }
+
+    #[test]
+    fn test_set_entry_full_block() {
+        // Test case to check setting an entry when the block is already full
+        let mut block = Block::new();
+        let key: Vec<u8> = vec![1, 2, 3];
+        let value: Vec<u8> = vec![4, 5, 6];
+
+        // Fill the block to its maximum capacity
+        while !block.is_full(key.len() + value.len() + SIZE_OF_U32) {
+            block.set_entry(&key, &value).unwrap();
+        }
+
+        // Attempt to set a new entry, which should result in an error
+        let res = block.set_entry(&key, &value);
+        assert!(res.is_err());
+        assert_eq!(
+            block.entry_count(),
+            BLOCK_SIZE / (key.len() + value.len() + SIZE_OF_U32)
+        );
+    }
+
+    #[test]
+    fn test_remove_entry_nonexistent_key() {
+        // Test case to check removing a non-existent key
+        let mut block = Block::new();
+        let key1: Vec<u8> = vec![1, 2, 3];
+        let key2: Vec<u8> = vec![4, 5, 6];
+
+        block.set_entry(&key1, &[7, 8, 9]).unwrap();
+
+        // Attempt to remove a non-existent key, which should return false
+        let result = block.remove_entry(&key2);
+        assert!(!result);
+        assert_eq!(block.entry_count(), 1);
+    }
+
+    #[test]
+    fn test_get_value_nonexistent_key() {
+        // Test case to check getting a value for a non-existent key
+        let block = Block::new();
+        let key: Vec<u8> = vec![1, 2, 3];
+
+        // Attempt to get the value for a non-existent key, which should return None
+        let value = block.get_value(&key);
+        assert_eq!(value, None);
+    }
+}
