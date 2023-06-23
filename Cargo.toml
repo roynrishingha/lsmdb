@@ -19,7 +19,6 @@ rustdoc-args = ["--document-private-items"]
 path = "src/lib.rs"
 
 [dependencies]
-bit-vec = "0.6"
-lz4_flex = { version = "0.10.0", default-features = false }
+bit-vec = "0.6.3"
 
 [dev-dependencies]
