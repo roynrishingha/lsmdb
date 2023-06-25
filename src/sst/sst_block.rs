@@ -1,8 +1,8 @@
+use std::{collections::HashMap, io, sync::Arc};
+
 const BLOCK_SIZE: usize = 4 * 1024; // 4KB
 
 const SIZE_OF_U32: usize = std::mem::size_of::<u32>();
-
-use std::{collections::HashMap, io, sync::Arc};
 
 pub(crate) struct Block {
     data: Vec<u8>,
@@ -157,7 +157,7 @@ mod tests {
 
         let res = block.set_entry(&key, &value);
         // check if we have IO error.
-        assert!(!res.is_err());
+        assert!(res.is_ok());
 
         assert_eq!(block.data.len(), key.len() + value.len() + SIZE_OF_U32);
         assert_eq!(block.entry_count, 1);
@@ -172,7 +172,7 @@ mod tests {
 
         // Set the key-value pair
         let res = block.set_entry(key, value);
-        assert!(!res.is_err());
+        assert!(res.is_ok());
 
         // Retrieve the value using the key
         let retrieved_value = block.get_value(key);
