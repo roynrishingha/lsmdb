@@ -1,3 +1,4 @@
+use crate::{api::SizeUnit, sst::BloomFilter};
 use std::{
     collections::BTreeMap,
     io,
@@ -5,7 +6,10 @@ use std::{
 };
 
 /// Setting default capacity to be 1GB.
-pub(crate) static MEMTABLE_DEFAULT_CAPACITY: usize = 1024;
+pub(crate) static DEFAULT_MEMTABLE_CAPACITY: usize = SizeUnit::Gigabytes.to_bytes(1);
+
+// 0.0001% false positive rate.
+pub(crate) static DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.0001;
 
 /// The MemTable is an in-memory data structure that stores recently written data before it is flushed to disk.
 pub(crate) struct MemTable {
@@ -17,26 +21,45 @@ pub(crate) struct MemTable {
     size: usize,
     /// The maximum allowed size for the MemTable in MB. This is used to enforce size limits and trigger `flush` operations.
     capacity: usize,
+    bloom_filter: BloomFilter,
+    size_unit: SizeUnit,
+    false_positive_rate: f64,
 }
 
 impl MemTable {
     /// Creates a new MemTable with the default MemTable capacity of 1GB.
     pub(crate) fn new() -> Self {
-        Self {
-            entries: Arc::new(Mutex::new(BTreeMap::new())),
-            entry_count: 0,
-            size: 0,
-            capacity: MEMTABLE_DEFAULT_CAPACITY,
-        }
+        Self::with_capacity_and_rate(
+            SizeUnit::Bytes,
+            DEFAULT_MEMTABLE_CAPACITY,
+            DEFAULT_FALSE_POSITIVE_RATE,
+        )
     }
 
-    /// Creates a new MemTable with the specified maximum size in MB.
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
+    /// Creates a new MemTable with the specified capacity, size_change and false positive rate.
+    pub(crate) fn with_capacity_and_rate(
+        size_unit: SizeUnit,
+        capacity: usize,
+        false_positive_rate: f64,
+    ) -> Self {
+        assert!(capacity > 0, "Capacity must be greater than zero");
+
+        let capacity_bytes = size_unit.to_bytes(capacity);
+
+        // Average key-value entry size in bytes.
+        let avg_entry_size = 100;
+        let num_elements = capacity_bytes / avg_entry_size;
+
+        let bloom_filter = BloomFilter::new(num_elements, false_positive_rate);
+
         Self {
             entries: Arc::new(Mutex::new(BTreeMap::new())),
             entry_count: 0,
-            size: 0,
-            capacity,
+            size: SizeUnit::Bytes.to_bytes(0),
+            capacity: capacity_bytes,
+            bloom_filter,
+            size_unit: SizeUnit::Bytes,
+            false_positive_rate,
         }
     }
 
@@ -49,17 +72,30 @@ impl MemTable {
             )
         })?;
 
-        let size_change = key.len() + value.len();
-        entries.insert(key, value);
+        if !self.bloom_filter.contains(&key) {
+            let size_change = key.len() + value.len();
+            entries.insert(key.clone(), value);
 
-        self.entry_count += 1;
-        self.size += size_change;
+            self.entry_count += 1;
+            self.size += size_change;
 
-        Ok(())
+            self.bloom_filter.set(&key);
+
+            return Ok(());
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "key already exists",
+        ))
     }
 
     /// Get the value of the given key
     pub(crate) fn get(&self, key: Vec<u8>) -> io::Result<Option<Vec<u8>>> {
+        if !self.bloom_filter.contains(&key) {
+            return Ok(None);
+        }
+
         let entries = self.entries.lock().map_err(|_| {
             io::Error::new(
                 io::ErrorKind::Other,
@@ -70,7 +106,11 @@ impl MemTable {
     }
 
     /// Remove the key-value entry of the given key.
-    pub(crate) fn remove(&mut self, key: Vec<u8>) -> io::Result<Option<Vec<u8>>> {
+    pub(crate) fn remove(&mut self, key: Vec<u8>) -> io::Result<Option<(Vec<u8>, Vec<u8>)>> {
+        if !self.bloom_filter.contains(&key) {
+            return Ok(None);
+        }
+
         let mut entries = self.entries.lock().map_err(|_| {
             io::Error::new(
                 io::ErrorKind::Other,
@@ -78,14 +118,14 @@ impl MemTable {
             )
         })?;
 
-        let value = entries.remove(&key);
-
-        if let Some(v) = &value {
+        if let Some((key, value)) = entries.remove_entry(&key) {
             self.entry_count -= 1;
-            self.size -= key.len() + v.len();
-        }
+            self.size -= key.len() + value.len();
 
-        Ok(value)
+            Ok(Some((key, value)))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Clears all key-value entries in the MemTable.
@@ -102,8 +142,35 @@ impl MemTable {
         self.size = 0;
         Ok(())
     }
-    pub(crate) fn get_capacity(&self) -> usize {
+
+    pub(crate) fn entries(&self) -> io::Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        let entries = self.entries.lock().map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "Failed to acquire lock on MemTable entries.",
+            )
+        })?;
+
+        Ok(entries
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect())
+    }
+
+    pub(crate) fn capacity(&self) -> usize {
         self.capacity
+    }
+
+    pub(crate) fn size(&self) -> usize {
+        self.size / self.size_unit.to_bytes(1)
+    }
+
+    pub(crate) fn false_positive_rate(&self) -> f64 {
+        self.false_positive_rate
+    }
+
+    pub(crate) fn size_unit(&self) -> SizeUnit {
+        self.size_unit.clone()
     }
 }
 
@@ -118,11 +185,11 @@ mod tests {
     }
 
     fn generate_dummy_kv_pairs() -> Vec<(Vec<u8>, Vec<u8>)> {
-        let mut pairs = Vec::new();
-
-        pairs.push(kv!("key1", "value1"));
-        pairs.push(kv!("key2", "value2"));
-        pairs.push(kv!("key3", "value3"));
+        let pairs = vec![
+            kv!("key1", "value1"),
+            kv!("key2", "value2"),
+            kv!("key3", "value3"),
+        ];
 
         pairs
     }
@@ -142,7 +209,7 @@ mod tests {
             .pop()
             .expect("Failed to get first key-value pair");
 
-        m.set(key.clone(), value.clone());
+        let _ = m.set(key.clone(), value.clone());
 
         assert_eq!(m.entry_count, 1);
         assert_eq!(m.size, key.len() + value.len());
@@ -160,7 +227,7 @@ mod tests {
         // set all dummy key-value pairs to mem-table
         let mut size = 0;
         kv.iter().for_each(|(key, value)| {
-            m.set(key.clone(), value.clone());
+            let _ = m.set(key.clone(), value.clone());
 
             size += key.len() + value.len();
 
@@ -181,14 +248,14 @@ mod tests {
 
         // set key-value
         kv.iter().for_each(|(key, value)| {
-            m.set(key.clone(), value.clone());
+            let _ = m.set(key.clone(), value.clone());
             size += key.len() + value.len();
             assert_eq!(m.size, size);
         });
 
         // remove key-value
         kv.iter().for_each(|(key, value)| {
-            m.remove(key.clone());
+            let _ = m.remove(key.clone());
             size -= key.len() + value.len();
             assert_eq!(m.size, size);
         });
