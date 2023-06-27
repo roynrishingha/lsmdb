@@ -15,8 +15,9 @@
 //! Version: 0.4.0
 //! ```
 
-#![allow(unused)]
+#![allow(dead_code)]
 
+mod api;
 mod memtable;
 mod sst;
 mod write_ahead_log;
