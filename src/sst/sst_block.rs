@@ -189,15 +189,15 @@ mod tests {
         let key3: Vec<u8> = vec![13, 14, 15];
         let value3: Vec<u8> = vec![16];
 
-        block.set_entry(&key1, &value1);
+        let _ = block.set_entry(&key1, &value1);
         assert_eq!(block.entry_count, 1);
         assert_eq!(block.get_value(&key1), Some(value1));
 
-        block.set_entry(&key2, &value2);
+        let _ = block.set_entry(&key2, &value2);
         assert_eq!(block.entry_count, 2);
         assert_eq!(block.get_value(&key2), Some(value2));
 
-        block.set_entry(&key3, &value3);
+        let _ = block.set_entry(&key3, &value3);
         assert_eq!(block.entry_count, 3);
         assert_eq!(block.get_value(&key3), Some(value3.clone()));
 

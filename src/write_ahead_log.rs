@@ -211,7 +211,6 @@ impl WriteAheadLogEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Cursor, Read};
 
     #[test]
     fn test_serialize_deserialize() {

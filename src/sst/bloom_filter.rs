@@ -87,7 +87,7 @@ impl BloomFilter {
     /// * `true` if the key is possibly present in the Bloom filter.
     /// * `false` if the key is definitely not present in the Bloom filter.
     pub(crate) fn contains<T: Hash>(&self, key: &T) -> bool {
-        let mut bits = self
+        let bits = self
             .bits
             .lock()
             .expect("Failed to acquire lock on Bloom Filter bits.");
