@@ -1,3 +1,98 @@
+//! # Bloom Filter
+//!
+//! The Bloom Filter is a space-efficient probabilistic data structure used to test whether an element is a member of a set. It provides a fast and memory-efficient way to check for set membership, but it introduces a small probability of false positives.
+//!
+//! The Bloom Filter implementation is provided as a Rust module and consists of a struct called `BloomFilter`. It uses a `BitVec` to represent the array of bits that make up the filter. The number of hash functions used by the Bloom Filter is configurable, and it keeps track of the number of elements inserted into the filter.
+//!
+//! ## Structure
+//!
+// The BloomFilter struct represents the Bloom Filter data structure and contains the following fields:
+//!
+//! ```rs
+//! pub(crate) struct BloomFilter {
+//!     bits: Arc<Mutex<BitVec>>,
+//!     num_hashes: usize,
+//!     num_elements: AtomicUsize,
+//! }
+//! ```
+//!
+//! ### `bits`
+//!
+//! An `Arc<Mutex<BitVec>>` representing the array of bits used to store the Bloom filter.
+//!
+//! ### `num_hashes`
+//!
+//! The number of hash functions used by the Bloom filter.
+//!
+//! ### `num_elements`
+//!
+//! An `AtomicUsize` representing the number of elements inserted into the Bloom filter.
+//!
+//! ## Constructor Methods
+//!
+//! ### `new`
+//!
+//! ```rs
+//! fn new(num_elements: usize, false_positive_rate: f64) -> Self
+//! ```
+//!
+//! The `new` method creates a new `BloomFilter` with the specified number of elements and false positive rate. It initializes the Bloom filter's bit array, calculates the number of hash functions, and sets the initial number of elements to zero.
+//!
+//! ## Public Methods
+//!
+//! ### `set`
+//!
+//! ```rs
+//! fn set<T: Hash>(&mut self, key: &T)```
+//!
+//! The `set` method inserts a key into the Bloom filter. It calculates the hash value for the key using multiple hash functions and sets the corresponding bits in the bit array to true. It also increments the element count.
+//!
+//! ### `contains`
+//!
+//! ```rs
+//! fn contains<T: Hash>(&self, key: &T) -> bool
+//! ```
+//!
+//! The `contains` method checks if a key is possibly present in the Bloom filter.
+//! It calculates the hash value for the key using multiple hash functions and checks the corresponding bits in the bit array.
+//! If any of the bits are false, it indicates that the key is definitely not present, and the method returns false.
+//! If all bits are true, the method returns true, indicating that the key is possibly present.
+//!
+//! ### `num_elements`
+//!
+//! ```rs
+//! fn num_elements(&self) -> usize
+//! ```
+//!
+//! This method returns the current number of elements inserted into the Bloom filter.
+//!
+//! ## Internal Method
+//!
+//! ### `calculate_hash`
+//!
+//! ```rs
+//! fn calculate_hash<T: Hash>(&self, key: &T, seed: usize) -> u64
+//! ```
+//!
+//! This function calculates a hash value for a given key and seed. It uses a suitable hash function to hash the key and incorporates the seed value for introducing randomness.
+//!
+//! ### `calculate_num_bits`
+//!
+//! ```rs
+//! fn calculate_num_bits(num_elements: usize, false_positive_rate: f64) -> usize
+//! ```
+//!
+//! This function calculates the optimal number of bits for the Bloom filter based on the desired false positive rate and the expected number of elements. It uses a formula to estimate the number of bits required.
+//!
+//! ### `calculate_num_hashes`
+//!
+//! ```rs
+//! fn calculate_num_hashes(num_bits: usize, num_elements: usize) -> usize
+//! ```
+//!
+//! This function calculates the optimal number of hash functions for the Bloom filter based on the number of bits and the expected number of elements. It uses a formula to estimate the number of hash functions required.
+//!
+
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},

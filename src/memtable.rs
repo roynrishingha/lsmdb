@@ -1,3 +1,179 @@
+//! # MemTable
+//!
+//! The `MemTable` (short for memory table) is an in-memory data structure that stores recently written data before it is flushed to disk. It serves as a write buffer and provides fast write operations.
+//!
+//! ## Constants
+//!
+//! The implementation defines the following constants:
+//!
+//! ### `DEFAULT_MEMTABLE_CAPACITY`
+//!
+//! Represents the default maximum size of the MemTable. By default, it is set to 1 gigabyte (1GB).
+//! ```rs
+//! pub(crate) static DEFAULT_MEMTABLE_CAPACITY: usize = SizeUnit::Gigabytes.to_bytes(1);
+//! ```
+//!
+//! ### `DEFAULT_FALSE_POSITIVE_RATE`
+//!
+//! Represents the default false positive rate for the Bloom filter used in the `MemTable`. By default, it is set to 0.0001 (0.01%).
+//!
+//! ```rs
+//! pub(crate) static DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.0001;
+//! ```
+//!
+//! ## Structure
+//!
+//! The **`MemTable`** structure represents the in-memory data structure and contains the following fields:
+//!
+//! ```rs
+//! pub(crate) struct MemTable {
+//!     entries: Arc<Mutex<BTreeMap<Vec<u8>, Vec<u8>>>>,
+//!     entry_count: usize,
+//!     size: usize,
+//!     capacity: usize,
+//!     bloom_filter: BloomFilter,
+//!     size_unit: SizeUnit,
+//!     false_positive_rate: f64,
+//! }
+//! ```
+//!
+//! ### `entries`
+//!
+//! The entries field is of type `Arc<Mutex<BTreeMap<Vec<u8>, Vec<u8>>>>`. It holds the key-value pairs of the `MemTable` in sorted order using a `BTreeMap`. The `Arc` (Atomic Reference Counting) and `Mutex` types allow for concurrent access and modification of the `entries` data structure from multiple threads, ensuring thread safety.
+//!
+//! ### `entry_count`
+//!
+//! The `entry_count` field is of type `usize` and represents the number of key-value entries currently stored in the `MemTable`.
+//!
+//! ### `size`
+//!
+//! The `size` field is of type `usize` and represents the current size of the `MemTable` in bytes. It is updated whenever a new key-value pair is added or removed.
+//!
+//! ### `capacity`
+//!
+//! The `capacity` field is of type `usize` and represents the maximum allowed size for the `MemTable` in bytes. It is used to enforce size limits and trigger flush operations when the `MemTable` exceeds this capacity.
+//!
+//! ### `bloom_filter`
+//!
+//! The `bloom_filter` field is of type `BloomFilter` and is used to probabilistically determine whether a `key` may exist in the `MemTable` without accessing the `entries` map. It helps improve performance by reducing unnecessary lookups in the map.
+//!
+//! ### `size_unit`
+//!
+//! The `size_unit` field is of type `SizeUnit` and represents the unit of measurement used for `capacity` and `size` calculations. It allows for flexibility in specifying the capacity and size of the `MemTable` in different units (e.g., bytes, kilobytes, megabytes, etc.).
+//!
+//! ### `false_positive_rate`
+//!
+//! The `false_positive_rate` field is of type `f64` and represents the desired false positive rate for the bloom filter. It determines the trade-off between memory usage and the accuracy of the bloom filter.
+//!
+//! ## Constructor Methods
+//!
+//! ### `new`
+//!
+//! ```rs
+//! pub(crate) fn new() -> Self
+//! ```
+//!
+//! The `new` method creates a new `MemTable` instance with the default capacity. It internally calls the `with_capacity_and_rate` method, passing the default capacity and false positive rate.
+//!
+//! ### `with_capacity_and_rate`
+//!
+//! ```rs
+//! pub(crate) fn with_capacity_and_rate(
+//!     size_unit: SizeUnit,
+//!     capacity: usize,
+//!     false_positive_rate: f64,
+//! ) -> Self
+//! ```
+//!
+//! The `with_capacity_and_rate` method creates a new `MemTable` with the specified capacity, size unit, and false positive rate. It initializes the `entries` field as an empty `BTreeMap`, sets the `entry_count` and `size` to zero, and creates a new `BloomFilter` with the given capacity and false positive rate. The capacity is converted to bytes based on the specified size unit.
+//!
+//! ## Public Methods
+//!
+//! ### `set`
+//!
+//! ```rs
+//! pub(crate) fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> io::Result<()>
+//! ```
+//!
+//! The `set` method inserts a new key-value pair into the `MemTable`. It first acquires a lock on the `entries` field to ensure thread-safety. If the key is not present in the `BloomFilter`, it adds the key-value pair to the `entries` map, updates the `entry_count` and `size`, and sets the key in the `BloomFilter`. If the key already exists, an `AlreadyExists` error is returned.
+//!
+//! ### `get`
+//!
+//! ```sh
+//! pub(crate) fn get(&self, key: Vec<u8>) -> io::Result<Option<Vec<u8>>>
+//! ```
+//!
+//! The `get` method retrieves the value associated with a given key from the `MemTable`. It first checks if the key is present in the `BloomFilter`. If it is, it acquires a lock on the `entries` field and returns the associated value. If the key is not present in the `BloomFilter`, it returns `None`.
+//!
+//! ### `remove`
+//!
+//! ```sh
+//! pub(crate) fn remove(&mut self, key: Vec<u8>) -> io::Result<Option<(Vec<u8>, Vec<u8>)>>
+//! ```
+//!
+//! The `remove` method removes a key-value pair from the `MemTable` based on a given key. It first checks if the key is present in the `BloomFilter`. If it is, it acquires a lock on the `entries` field and removes the key-value pair from the `entries` map. It updates the `entry_count` and `size` accordingly and returns the removed key-value pair as a tuple. If the key is not present in the `BloomFilter`, it returns `None`.
+//!
+//! ### `clear`
+//!
+//! ```rs
+//! pub(crate) fn clear(&mut self) -> io::Result<()>
+//! ```
+//!
+//! The `clear` method removes all key-value entries from the `MemTable`. It acquires a lock on the `entries` field, clears the `entries` map, and sets the `entry_count` and `size` fields to zero.
+//!
+//! ### `entries`
+//!
+//! ```rs
+//! pub(crate) fn entries(&self) -> io::Result<Vec<(Vec<u8>, Vec<u8>)>>
+//! ```
+//!
+//! The `entries` method returns a vector of all key-value pairs in the `MemTable`. It acquires a lock on the `entries` field and iterates over the key-value pairs in the `entries` map. It clones each key-value pair and collects them into a vector, which is then returned.
+//!
+//! ## Internal Method
+//!
+//! ### `capacity`
+//!
+//! ```rs
+//! pub(crate) fn capacity(&self) -> usize
+//! ```
+//!
+//! The `capacity` method returns the capacity of the `MemTable` in bytes.
+//!
+//! ### `size`
+//!
+//! ```rs
+//! pub(crate) fn size(&self) -> usize
+//! ```
+//!
+//! The `size` method returns the current size of the `MemTable` in the specified size unit. It divides the internal `size` by the number of bytes in one unit of the specified size unit.
+//!
+//! ### `false_positive_rate`
+//!
+//! ```rs
+//! pub(crate) fn false_positive_rate(&self) -> f64
+//! ```
+//!
+//! The `false_positive_rate` method returns the false positive rate of the `MemTable`.
+//!
+//! ### `size_unit`
+//!
+//! ```rs
+//! pub(crate) fn size_unit(&self) -> SizeUnit
+//! ```
+//!
+//! The `size_unit` method returns the size unit used by the `MemTable`.
+//!
+//! ## Error Handling
+//!
+//! All the methods that involve acquiring a lock on the `entries` field use the `io::Error` type to handle potential errors when obtaining the lock. If an error occurs during the locking process, an `io::Error` instance is created with a corresponding error message.
+//!
+//! ## Thread Safety
+//!
+//! The `MemTable` implementation ensures thread safety by using an `Arc<Mutex<BTreeMap<Vec<u8>, Vec<u8>>>>` for storing the key-value entries. The `Arc` allows multiple ownership of the `entries` map across threads, and the `Mutex` ensures exclusive access to the map during modification operations, preventing data races.
+//!
+//! The locking mechanism employed by the `Mutex` guarantees that only one thread can modify the `entries` map at a time, while allowing multiple threads to read from it simultaneously.
+//!
+
 use crate::{api::SizeUnit, sst::BloomFilter};
 use std::{
     collections::BTreeMap,

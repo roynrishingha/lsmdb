@@ -1,3 +1,57 @@
+//! # `lsmdb` API
+//!
+//! ## `StorageEngine`
+//!
+//! The `StorageEngine` struct represents the main component of the LSM Tree storage engine. It consists of the following fields:
+//!
+//! - `memtable`: An instance of the `MemTable` struct that serves as an in-memory table for storing key-value pairs. It provides efficient write operations.
+//! - `wal`: An instance of the `WriteAheadLog` struct that handles write-ahead logging. It ensures durability by persistently storing write operations before they are applied to the memtable and SSTables.
+//! - `sstables`: A vector of `SSTable` instances, which are on-disk sorted string tables storing key-value pairs. The SSTables are organized in levels, where each level contains larger and more compacted tables.
+//! - `dir`: An instance of the `DirPath` struct that holds the directory paths for the root directory, write-ahead log directory, and SSTable directory.
+//!
+//! The `StorageEngine` struct provides methods for interacting with the storage engine:
+//!
+//! - `new`: Creates a new instance of the `StorageEngine` struct. It initializes the memtable, write-ahead log, and SSTables.
+//! - `put`: Inserts a new key-value pair into the storage engine. It writes the key-value entry to the memtable and the write-ahead log. If the memtable reaches its capacity, it is flushed to an SSTable.
+//! - `get`: Retrieves the value associated with a given key from the storage engine. It first searches in the memtable, which has the most recent data. If the key is not found in the memtable, it searches in the SSTables, starting from the newest levels and moving to the older ones.
+//! - `remove`: Removes a key-value pair from the storage engine. It first checks if the key exists in the memtable. If not, it searches for the key in the SSTables and removes it from there. The removal operation is also logged in the write-ahead log for durability.
+//! - `update`: Updates the value associated with a given key in the storage engine. It first removes the existing key-value pair using the `remove` method and then inserts the updated pair using the `put` method.
+//! - `clear`: Clears the storage engine by deleting the memtable and write-ahead log. It creates a new instance of the storage engine, ready to be used again.
+//!
+//! ## DirPath
+//!
+//! The `DirPath` struct represents the directory paths used by the storage engine. It consists of the following fields:
+//!
+//! - `root`: A `PathBuf` representing the root directory path, which serves as the parent directory for the write-ahead log and SSTable directories.
+//! - `wal`: A `PathBuf` representing the write-ahead log directory path, where the write-ahead log file is stored.
+//! - `sst`: A `PathBuf` representing the SSTable directory path, where the SSTable files are stored.
+//!
+//! The `DirPath` struct provides methods for building and retrieving the directory paths.
+//!
+//! ## SizeUnit
+//!
+// The `SizeUnit` enum represents the unit of measurement for capacity and size. It includes the following variants:
+//!
+//! - `Bytes`: Represents the byte unit.
+//! - `Kilobytes`: Represents the kilobyte unit.
+//! - `Megabytes`: Represents the megabyte unit.
+//! - `Gigabytes`: Represents the gigabyte unit.
+//!
+//! The `SizeUnit` enum provides a method `to_bytes` for converting a given value to bytes based on the selected unit.
+//!
+//! ## Helper Functions
+//!
+//! The code includes several helper functions:
+//!
+//! - `with_capacity`: A helper function that creates a new instance of the `StorageEngine` struct with a specified capacity for the memtable.
+//! - `with_capacity_and_rate`: A helper function
+//!  that creates a new instance of the `StorageEngine` struct with a specified capacity for the memtable and a compaction rate for the SSTables.
+//! - `flush_memtable`: A helper function that flushes the contents of the memtable to an SSTable. It creates a new SSTable file and writes the key-value pairs from the memtable into it. After flushing, the memtable is cleared.
+//! - `recover_memtable`: A helper function that recovers the contents of the memtable from the write-ahead log during initialization. It reads the logged write operations from the write-ahead log and applies them to the memtable.
+//!
+//! These helper functions assist in initializing the storage engine, flushing the memtable to an SSTable when it reaches its capacity, and recovering the memtable from the write-ahead log during initialization, ensuring durability and maintaining data consistency.
+//!
+
 use crate::{
     memtable::{MemTable, DEFAULT_FALSE_POSITIVE_RATE, DEFAULT_MEMTABLE_CAPACITY},
     sst::SSTable,
@@ -13,9 +67,9 @@ pub struct StorageEngine {
 }
 
 pub struct DirPath {
-    pub root: PathBuf,
-    pub wal: PathBuf,
-    pub sst: PathBuf,
+    root: PathBuf,
+    wal: PathBuf,
+    sst: PathBuf,
 }
 
 /// Represents the unit of measurement for capacity and size.
@@ -39,7 +93,9 @@ impl StorageEngine {
     /// # Returns
     ///
     /// A Result containing the `StorageEngine` instance if successful, or an `io::Error` if an error occurred.
-    pub fn new(dir: &str) -> io::Result<Self> {
+    pub fn new(dir: PathBuf) -> io::Result<Self> {
+        let dir = DirPath::build(dir);
+
         StorageEngine::with_capacity(dir, SizeUnit::Bytes, DEFAULT_MEMTABLE_CAPACITY)
     }
 
@@ -190,16 +246,11 @@ impl StorageEngine {
         self.wal.clear()?;
 
         // Call the build method of StorageEngine and return a new instance.
-        StorageEngine::with_capacity_and_rate(
-            self.dir.get_dir(),
-            size_unit,
-            capacity,
-            false_positive_rate,
-        )
+        StorageEngine::with_capacity_and_rate(self.dir, size_unit, capacity, false_positive_rate)
     }
 
     pub(crate) fn with_capacity(
-        dir: &str,
+        dir: DirPath,
         size_unit: SizeUnit,
         capacity: usize,
     ) -> io::Result<Self> {
@@ -207,15 +258,13 @@ impl StorageEngine {
     }
 
     pub fn with_capacity_and_rate(
-        dir: &str,
+        dir: DirPath,
         size_unit: SizeUnit,
         capacity: usize,
         false_positive_rate: f64,
     ) -> io::Result<Self> {
-        let dir_path = DirPath::build(dir);
-
         // The WAL file path.
-        let wal_file_path = dir_path.wal.join(WAL_FILE_NAME);
+        let wal_file_path = dir.wal.join(WAL_FILE_NAME);
 
         // Check if the WAL file exists and has contents.
         let wal_exists = wal_file_path.exists();
@@ -226,18 +275,18 @@ impl StorageEngine {
             let memtable =
                 MemTable::with_capacity_and_rate(size_unit, capacity, false_positive_rate);
 
-            let wal = WriteAheadLog::new(&dir_path.wal)?;
+            let wal = WriteAheadLog::new(&dir.wal)?;
             let sstables = Vec::new();
 
             Ok(Self {
                 memtable,
                 wal,
                 sstables,
-                dir: dir_path,
+                dir,
             })
         } else {
             // WAL file has logs, recover the MemTable from the WAL.
-            let mut wal = WriteAheadLog::new(&dir_path.wal)?;
+            let mut wal = WriteAheadLog::new(&dir.wal)?;
 
             // I should not create empty sstable. I need to load existing sstables if exists. Otherwise new empty one should be used.
             let sstables = Vec::new();
@@ -251,7 +300,7 @@ impl StorageEngine {
                 memtable,
                 wal,
                 sstables,
-                dir: dir_path,
+                dir,
             })
         }
     }
@@ -297,8 +346,8 @@ impl StorageEngine {
 }
 
 impl DirPath {
-    fn build(directory_path: &str) -> Self {
-        let root = PathBuf::from(directory_path);
+    fn build(directory_path: PathBuf) -> Self {
+        let root = directory_path;
         let wal = root.join("wal");
         let sst = root.join("sst");
 

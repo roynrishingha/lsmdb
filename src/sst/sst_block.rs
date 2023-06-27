@@ -1,3 +1,53 @@
+//! # SSTable Block
+//!
+//! The `SSTable` manages multiple `Block` instances to store the data, and the `Block` handles individual block-level operations and indexing.
+//!
+//! Alignments of key-value pairs inside a Block:
+//!
+//! ```text
+//! +----------------------------------+
+//! |             Block                |
+//! +----------------------------------+
+//! |  - data: Vec<u8>                 |   // Data entries within the block
+//! |  - index: HashMap<Arc<Vec<u8>>, usize> |   // Index for key-based lookups
+//! |  - entry_count: usize             |   // Number of entries in the block
+//! +----------------------------------+
+//! |           Block Data              |
+//! |   +------------------------+     |
+//! |   |   Entry 1              |     |
+//! |   | +-------------------+  |     |
+//! |   | |   Length Prefix   |  |     |
+//! |   | | (4 bytes, little- |  |     |
+//! |   | |   endian format)  |  |     |
+//! |   | +-------------------+  |     |
+//! |   | |       Key         |  |     |
+//! |   | | (variable length) |  |     |
+//! |   | +-------------------+  |     |
+//! |   | |      Value        |  |     |
+//! |   | | (variable length) |  |     |
+//! |   | +-------------------+  |     |
+//! |   +------------------------+     |
+//! |   |   Entry 2              |     |
+//! |   |       ...              |     |
+//! |   +------------------------+     |
+//! +----------------------------------+
+//! ```
+//!
+//! In the diagram:
+//! - The `Block` struct represents an individual block within the SSTable.
+//! - The `data` field of the `Block` is a vector (`Vec<u8>`) that stores the data entries.
+//! - The `index` field is a `HashMap` that maintains the index for efficient key-based lookups.
+//! - The `entry_count` field keeps track of the number of entries in the block.
+//!
+//! Each entry within the block consists of three parts:
+//! 1. Length Prefix: A 4-byte length prefix in little-endian format, indicating the length of the value.
+//! 2. Key: Variable-length key bytes.
+//! 3. Value: Variable-length value bytes.
+//!
+//! The block's data vector (`data`) stores these entries sequentially. Each entry follows the format mentioned above, and they are concatenated one after another within the data vector.
+//! The index hashmap (`index`) maintains references to the keys and their corresponding offsets within the data vector.
+//!
+
 use std::{collections::HashMap, io, sync::Arc};
 
 const BLOCK_SIZE: usize = 4 * 1024; // 4KB

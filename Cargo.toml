@@ -2,7 +2,7 @@
 name = "lsmdb"
 description = "lsmdb is an efficient storage engine that implements the Log-Structured Merge Tree (LSM-Tree) data structure, designed specifically for handling key-value pairs."
 authors = ["Nrishinghananda Roy <roynrishingha@gmail.com>"]
-version = "0.4.0"
+version = "0.4.1"
 categories = ["data-structures", "database-implementations"]
 keywords = ["database", "key-value-store", "key-value", "kv", "db"]
 repository = "https://github.com/roynrishingha/lsmdb"

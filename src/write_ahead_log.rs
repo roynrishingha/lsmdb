@@ -1,3 +1,191 @@
+//! # Write-Ahead Log (WAL)
+//!
+//! The Sequential Write-Ahead Log (WAL) is a crucial component of the LSM Tree storage engine.
+//! It provides durability and atomicity guarantees by logging write operations before they are applied to the main data structure.
+//!
+//! When a write operation is received, the key-value pair is first appended to the WAL.
+//! In the event of a crash or system failure, the WAL can be replayed to recover the data modifications and bring the MemTable back to a consistent state.
+//!
+//! ## WriteAheadLog Structure
+//!
+//! The `WriteAheadLog` structure represents the write-ahead log (WAL) and contains the following field:
+//!
+//! ```rs
+//! struct WriteAheadLog {
+//!     log_file: Arc<Mutex<File>>,
+//! }
+//! ```
+//!
+//! ### log_file
+//!
+//! The `log_file` field is of type `Arc<Mutex<File>>`. It represents the WAL file and provides concurrent access and modification through the use of an `Arc` (Atomic Reference Counting) and `Mutex`.
+//!
+//! ## Log File Structure Diagram
+//!
+//! The `log_file` is structured as follows:
+//!
+//! ```text
+//! +-------------------+
+//! |  Entry Length     |   (4 bytes)
+//! +-------------------+
+//! |   Entry Kind      |   (1 byte)
+//! +-------------------+
+//! |   Key Length      |   (4 bytes)
+//! +-------------------+
+//! |  Value Length     |   (4 bytes)
+//! +-------------------+
+//! |       Key         |   (variable)
+//! |                   |
+//! |                   |
+//! +-------------------+
+//! |      Value        |   (variable)
+//! |                   |
+//! |                   |
+//! +-------------------+
+//! |  Entry Length     |   (4 bytes)
+//! +-------------------+
+//! |   Entry Kind      |   (1 byte)
+//! +-------------------+
+//! |   Key Length      |   (4 bytes)
+//! +-------------------+
+//! |  Value Length     |   (4 bytes)
+//! +-------------------+
+//! |       Key         |   (variable)
+//! |                   |
+//! |                   |
+//! +-------------------+
+//! |      Value        |   (variable)
+//! |                   |
+//! |                   |
+//! +-------------------+
+//! ```
+//!
+//! - **Entry Length**: A 4-byte field representing the total length of the entry in bytes.
+//! - **Entry Kind**: A 1-byte field indicating the type of entry (Insert or Remove).
+//! - **Key Length**: A 4-byte field representing the length of the key in bytes.
+//! - **Key**: The actual key data, which can vary in size.
+//! - **Value** Length: A 4-byte field representing the length of the value in bytes.
+//! - **Value**: The actual value data, which can also vary in size.
+//!
+//! Each entry is written sequentially into the `log_file` using the `write_all` method, ensuring that the entries are stored contiguously. New entries are appended to the end of the `log_file` after the existing entries.
+//!
+//! ## Constants
+//!
+//! A constant named `WAL_FILE_NAME` is defined, representing the name of the WAL file.
+//!
+//! ```rs
+//! static WAL_FILE_NAME: &str = "lsmdb_wal.bin";
+//! ```
+//!
+//! ## `EntryKind`
+//!
+//! ```rs
+//! enum EntryKind {
+//!     Insert = 1,
+//!     Remove = 2,
+//! }
+//! ```
+//!
+//! The `EntryKind` enum represents the kind of entry stored in the WAL. It has two variants: `Insert` and `Remove`. Each variant is associated with an integer value used for serialization.
+//!
+//! ## `WriteAheadLogEntry`
+//!
+//! ```rs
+//! struct WriteAheadLogEntry {
+//!     entry_kind: EntryKind,
+//!     key: Vec<u8>,
+//!     value: Vec<u8>,
+//! }
+//! ```
+//!
+//! The `WriteAheadLogEntry` represents a single entry in the Write-Ahead Log. It contains the following fields:
+//!
+//! - **`entry_kind`**: An enumeration (`EntryKind`) representing the type of the entry (insert or remove).
+//! - **`key`**: A vector of bytes (`Vec<u8>`) representing the key associated with the entry.
+//! - **`value`**: A vector of bytes (`Vec<u8>`) representing the value associated with the entry.
+//!
+//! ## `WriteAheadLogEntry` Methods
+//!
+//! ### `new`
+//!
+//! ```rs
+//! fn new(entry_kind: EntryKind, key: Vec<u8>, value: Vec<u8>) -> Self
+//! ```
+//!
+//! The `new` method creates a new instance of the `WriteAheadLogEntry` struct. It takes the `entry_kind`, `key`, and `value` as parameters and initializes the corresponding fields.
+//!
+//! ### `serialize`
+//!
+//! ```rs
+//! fn serialize(&self) -> Vec<u8>
+//! ```
+//!
+//! The `serialize` method serializes the `WriteAheadLogEntry` into a vector of bytes.
+//! It calculates the length of the entry, then serializes the length, entry kind, key length, value length, key, and value into the vector. The serialized data is returned.
+//!
+//! ### `deserialize`
+//!
+//! ```rs
+//! fn deserialize(serialized_data: &[u8]) -> io::Result<Self>
+//! ```
+//!
+//! This method deserializes a `WriteAheadLogEntry` from the provided serialized data.
+//! It performs validation checks on the length and structure of the serialized data and returns an `io::Result` containing the deserialized entry if successful.
+//!
+//! ## `WriteAheadLog` Methods
+//!
+//! ### `new`
+//!
+//! ```rs
+//! fn new(directory_path: &PathBuf) -> io::Result<Self>
+//! ```
+//!
+//! The `new` method is a constructor function that creates a new `WriteAheadLog` instance.
+//! It takes a `directory_path` parameter as a `PathBuf` representing the directory path where the WAL file will be stored.
+//!
+//! If the directory doesn't exist, it creates it. It then opens the log file with read, append, and create options, and initializes the log_file field.
+//!
+//! ### `append`
+//!
+//! ```rs
+//! fn append(&mut self, entry_kind: EntryKind, key: Vec<u8>, value: Vec<u8> ) -> io::Result<()>
+//! ```
+//!
+//! The `append` method appends a new entry to the Write-Ahead Log.
+//! It takes an `entry_kind` parameter of type `EntryKind`, a `key` parameter of type `Vec<u8>`, and a `value` parameter of type `Vec<u8>`. The method acquires a lock on the `log_file` to ensure mutual exclusion when writing to the file.
+//!
+//! It creates a `WriteAheadLogEntry` with the provided parameters, serializes it, and writes the serialized data to the log file.
+//!
+//! Finally, it flushes the log file to ensure the data is persisted. If the operation succeeds, `Ok(())` is returned; otherwise, an `io::Error` instance is created and returned.
+//!
+//! ### `recover`
+//!
+//! ```rs
+//! fn recover(&mut self) -> io::Result<Vec<WriteAheadLogEntry>>
+//! ```
+//!
+//! The `recover` method reads and recovers the entries from the Write-Ahead Log. The method acquires a lock on the `log_file` to ensure exclusive access during the recovery process.
+//!
+//! It reads the log file and deserializes the data into a vector of `WriteAheadLogEntry` instances.
+//! It continues reading and deserializing until the end of the log file is reached. The recovered entries are returned as a vector.
+//!
+//! ### `clear`
+//!
+//! ```rs
+//! fn clear(&mut self) -> io::Result<()>
+//! ```
+//!
+//! The `clear` method clears the contents of the WAL file. It acquires a lock on the `log_file` to ensure exclusive access when truncating and seeking the file.
+//! The method sets the length of the file to `0` using the `set_len` method, effectively truncating it. Then, it seeks to the start of the file using `seek` with `SeekFrom::Start(0)` to reset the file pointer.
+//! If the operation succeeds, `Ok(())` is returned; otherwise, an `io::Error` instance is created and returned.
+//!
+//! ## Thread Safety
+//!
+//! The `WriteAheadLog` implementation ensures thread safety by using an `Arc<Mutex<File>>` for the `log_file` field. The `Arc` allows multiple ownership of the WAL file across threads, and the `Mutex` ensures exclusive access to the file during write, recovery, and clear operations, preventing data races.
+//!
+//! The locking mechanism employed by the `Mutex` guarantees that only one thread can modify the WAL file at a time, while allowing multiple threads to read from it simultaneously.
+//!
+
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
