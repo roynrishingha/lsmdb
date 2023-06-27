@@ -12,7 +12,7 @@ pub(crate) static DEFAULT_MEMTABLE_CAPACITY: usize = SizeUnit::Gigabytes.to_byte
 pub(crate) static DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.0001;
 
 /// The MemTable is an in-memory data structure that stores recently written data before it is flushed to disk.
-pub(crate) struct MemTable {
+pub struct MemTable {
     /// Stores key-value pairs in sorted order.
     entries: Arc<Mutex<BTreeMap<Vec<u8>, Vec<u8>>>>,
     /// The number of key-value entries present in the MemTable.

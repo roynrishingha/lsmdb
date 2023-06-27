@@ -7,7 +7,7 @@ use std::{
 
 pub(crate) static WAL_FILE_NAME: &str = "lsmdb_wal.bin";
 
-pub(crate) struct WriteAheadLog {
+pub struct WriteAheadLog {
     log_file: Arc<Mutex<File>>,
 }
 

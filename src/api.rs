@@ -6,16 +6,16 @@ use crate::{
 use std::{fs, io, path::PathBuf};
 
 pub struct StorageEngine {
-    memtable: MemTable,
-    wal: WriteAheadLog,
-    sstables: Vec<SSTable>,
-    dir: DirPath,
+    pub memtable: MemTable,
+    pub wal: WriteAheadLog,
+    pub sstables: Vec<SSTable>,
+    pub dir: DirPath,
 }
 
-struct DirPath {
-    root: PathBuf,
-    wal: PathBuf,
-    sst: PathBuf,
+pub struct DirPath {
+    pub root: PathBuf,
+    pub wal: PathBuf,
+    pub sst: PathBuf,
 }
 
 /// Represents the unit of measurement for capacity and size.
@@ -28,10 +28,33 @@ pub enum SizeUnit {
 }
 
 impl StorageEngine {
+    /// Creates a new instance of the `StorageEngine` struct.
+    ///
+    /// It initializes the memtable, write-ahead log, and SSTables.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - A string representing the directory path where the database files will be stored.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `StorageEngine` instance if successful, or an `io::Error` if an error occurred.
     pub fn new(dir: &str) -> io::Result<Self> {
         StorageEngine::with_capacity(dir, SizeUnit::Bytes, DEFAULT_MEMTABLE_CAPACITY)
     }
 
+    /// Inserts a new key-value pair into the storage engine.
+    ///
+    /// It writes the key-value entry to the memtable and the write-ahead log. If the memtable reaches its capacity, it is flushed to an SSTable.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string representing the key.
+    /// * `value` - A string representing the value.
+    ///
+    /// # Returns
+    ///
+    /// A Result indicating success or an `io::Error` if an error occurred.
     pub fn put(&mut self, key: &str, value: &str) -> io::Result<()> {
         // Convert the key and value into Vec<u8> from given &str.
         let key = key.as_bytes().to_vec();
@@ -68,6 +91,21 @@ impl StorageEngine {
         Ok(())
     }
 
+    /// Retrieves the value associated with a given key from the storage engine.
+    ///
+    /// It first searches in the memtable, which has the most recent data. If the key is not found in the memtable, it searches in the SSTables, starting from the newest levels and moving to the older ones.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string representing the key to search for.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing an Option:
+    /// - `Some(value)` if the key is found and associated value is returned.
+    /// - `None` if the key is not found.
+    ///
+    /// An `io::Error` is returned if an error occurred.
     pub fn get(&self, key: &str) -> io::Result<Option<String>> {
         // Convert the key into Vec<u8> from given &str.
         let key = key.as_bytes().to_vec();
@@ -88,6 +126,17 @@ impl StorageEngine {
         Ok(None)
     }
 
+    /// Removes a key-value pair from the storage engine.
+    ///
+    /// It first checks if the key exists in the memtable. If not, it searches for the key in the SSTables and removes it from there. The removal operation is also logged in the write-ahead log for durability.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string representing the key to remove.
+    ///
+    /// # Returns
+    ///
+    /// A Result indicating success.
     pub fn remove(&mut self, key: &str) -> io::Result<()> {
         // Convert the key and value into Vec<u8> from given &str.
         let key = key.as_bytes().to_vec();

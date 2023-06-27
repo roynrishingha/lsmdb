@@ -2,7 +2,7 @@ use super::sst_block::Block;
 use chrono::{DateTime, Utc};
 use std::{io, path::PathBuf};
 
-pub(crate) struct SSTable {
+pub struct SSTable {
     file_path: PathBuf,
     blocks: Vec<Block>,
     created_at: DateTime<Utc>,
