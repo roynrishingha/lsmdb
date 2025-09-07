@@ -94,7 +94,7 @@ impl StorageEngine {
     ///
     /// A Result containing the `StorageEngine` instance if successful, or an `io::Error` if an error occurred.
     pub fn new(dir: PathBuf) -> io::Result<Self> {
-        let dir = DirPath::build(dir);
+        let dir = DirPath::build(dir)?;
 
         StorageEngine::with_capacity(dir, SizeUnit::Bytes, DEFAULT_MEMTABLE_CAPACITY)
     }
@@ -346,12 +346,16 @@ impl StorageEngine {
 }
 
 impl DirPath {
-    fn build(directory_path: PathBuf) -> Self {
+    fn build(directory_path: PathBuf) -> std::io::Result<Self> {
         let root = directory_path;
         let wal = root.join("wal");
         let sst = root.join("sst");
 
-        Self { root, wal, sst }
+        // Ensure all required directories exist
+        std::fs::create_dir_all(&wal)?;
+        std::fs::create_dir_all(&sst)?;
+
+        Ok(Self { root, wal, sst })
     }
 
     fn get_dir(&self) -> &str {
