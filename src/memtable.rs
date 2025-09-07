@@ -241,11 +241,10 @@ impl MemTable {
 
     /// Inserts a key-value pair into the MemTable.
     pub(crate) fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> io::Result<()> {
-        let mut entries = self.entries.lock().map_err(|_| {
-            io::Error::other(
-                "Failed to acquire lock on MemTable entries.",
-            )
-        })?;
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| io::Error::other("Failed to acquire lock on MemTable entries."))?;
 
         if !self.bloom_filter.contains(&key) {
             let size_change = key.len() + value.len();
@@ -271,11 +270,10 @@ impl MemTable {
             return Ok(None);
         }
 
-        let entries = self.entries.lock().map_err(|_| {
-            io::Error::other(
-                "Failed to acquire lock on MemTable entries.",
-            )
-        })?;
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| io::Error::other("Failed to acquire lock on MemTable entries."))?;
         Ok(entries.get(&key).cloned())
     }
 
@@ -285,11 +283,10 @@ impl MemTable {
             return Ok(None);
         }
 
-        let mut entries = self.entries.lock().map_err(|_| {
-            io::Error::other(
-                "Failed to acquire lock on MemTable entries.",
-            )
-        })?;
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| io::Error::other("Failed to acquire lock on MemTable entries."))?;
 
         if let Some((key, value)) = entries.remove_entry(&key) {
             self.entry_count -= 1;
@@ -303,11 +300,10 @@ impl MemTable {
 
     /// Clears all key-value entries in the MemTable.
     pub(crate) fn clear(&mut self) -> io::Result<()> {
-        let mut entries = self.entries.lock().map_err(|_| {
-            io::Error::other(
-                "Failed to acquire lock on MemTable entries.",
-            )
-        })?;
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| io::Error::other("Failed to acquire lock on MemTable entries."))?;
 
         entries.clear();
         self.entry_count = 0;
@@ -316,11 +312,10 @@ impl MemTable {
     }
 
     pub(crate) fn entries(&self) -> io::Result<Vec<(Vec<u8>, Vec<u8>)>> {
-        let entries = self.entries.lock().map_err(|_| {
-            io::Error::other(
-                "Failed to acquire lock on MemTable entries.",
-            )
-        })?;
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| io::Error::other("Failed to acquire lock on MemTable entries."))?;
 
         Ok(entries
             .iter()
