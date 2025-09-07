@@ -243,8 +243,7 @@ impl WriteAheadLog {
         value: Vec<u8>,
     ) -> io::Result<()> {
         let mut log_file = self.log_file.lock().map_err(|poison_error| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to obtain lock: {:?}", poison_error),
             )
         })?;
@@ -262,8 +261,7 @@ impl WriteAheadLog {
 
     pub(crate) fn recover(&mut self) -> io::Result<Vec<WriteAheadLogEntry>> {
         let mut log_file = self.log_file.lock().map_err(|poison_error| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to obtain lock: {:?}", poison_error),
             )
         })?;
@@ -288,8 +286,7 @@ impl WriteAheadLog {
 
     pub(crate) fn clear(&mut self) -> io::Result<()> {
         let mut log_file = self.log_file.lock().map_err(|poison_error| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to obtain lock: {:?}", poison_error),
             )
         })?;

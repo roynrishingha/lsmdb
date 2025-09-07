@@ -242,8 +242,7 @@ impl MemTable {
     /// Inserts a key-value pair into the MemTable.
     pub(crate) fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> io::Result<()> {
         let mut entries = self.entries.lock().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "Failed to acquire lock on MemTable entries.",
             )
         })?;
@@ -273,8 +272,7 @@ impl MemTable {
         }
 
         let entries = self.entries.lock().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "Failed to acquire lock on MemTable entries.",
             )
         })?;
@@ -288,8 +286,7 @@ impl MemTable {
         }
 
         let mut entries = self.entries.lock().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "Failed to acquire lock on MemTable entries.",
             )
         })?;
@@ -307,8 +304,7 @@ impl MemTable {
     /// Clears all key-value entries in the MemTable.
     pub(crate) fn clear(&mut self) -> io::Result<()> {
         let mut entries = self.entries.lock().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "Failed to acquire lock on MemTable entries.",
             )
         })?;
@@ -321,8 +317,7 @@ impl MemTable {
 
     pub(crate) fn entries(&self) -> io::Result<Vec<(Vec<u8>, Vec<u8>)>> {
         let entries = self.entries.lock().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "Failed to acquire lock on MemTable entries.",
             )
         })?;

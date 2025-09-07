@@ -44,8 +44,7 @@
 //! The code includes several helper functions:
 //!
 //! - `with_capacity`: A helper function that creates a new instance of the `StorageEngine` struct with a specified capacity for the memtable.
-//! - `with_capacity_and_rate`: A helper function
-//!  that creates a new instance of the `StorageEngine` struct with a specified capacity for the memtable and a compaction rate for the SSTables.
+//! - `with_capacity_and_rate`: A helper function that creates a new instance of the `StorageEngine` struct with a specified capacity for the memtable and a compaction rate for the SSTables.
 //! - `flush_memtable`: A helper function that flushes the contents of the memtable to an SSTable. It creates a new SSTable file and writes the key-value pairs from the memtable into it. After flushing, the memtable is cleared.
 //! - `recover_memtable`: A helper function that recovers the contents of the memtable from the write-ahead log during initialization. It reads the logged write operations from the write-ahead log and applies them to the memtable.
 //!
