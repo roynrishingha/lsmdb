@@ -356,7 +356,7 @@ impl WriteAheadLogEntry {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "Invalid entry kind value",
-                ))
+                ));
             }
         };
 

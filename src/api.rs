@@ -52,9 +52,9 @@
 //!
 
 use crate::{
-    memtable::{MemTable, DEFAULT_FALSE_POSITIVE_RATE, DEFAULT_MEMTABLE_CAPACITY},
+    memtable::{DEFAULT_FALSE_POSITIVE_RATE, DEFAULT_MEMTABLE_CAPACITY, MemTable},
     sst::SSTable,
-    write_ahead_log::{EntryKind, WriteAheadLog, WriteAheadLogEntry, WAL_FILE_NAME},
+    write_ahead_log::{EntryKind, WAL_FILE_NAME, WriteAheadLog, WriteAheadLogEntry},
 };
 use std::{fs, io, path::PathBuf};
 

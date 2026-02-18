@@ -10,32 +10,23 @@ documentation = "https://docs.rs/lsmdb/"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 publish = true
-edition = "2021"
-
+edition = "2024"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-anyhow = "1.0.99"
-bit-vec = "0.6.3"
-chrono = "0.4.26"
-clap = { version = "4.5.47", features = ["derive"] }
-colored = "3.0.0"
-dirs = "6.0.0"
-miette = { version = "7.6.0", features = ["fancy"] }
-
+anyhow = "1"
+bit-vec = "0.8"
+chrono = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+colored = "3"
+dirs = "6"
+miette = { version = "7", features = ["fancy"] }
 
 [profile.dist]
 inherits = "release"
 lto = "thin"
 
-
 [package.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
-
-[package.metadata.wix]
-upgrade-guid = "224527AD-DD06-4C2C-8848-10D04309CB26"
-path-guid = "3859C045-4486-4091-BA02-2EF60CD74D6B"
-license = false
-eula = false
