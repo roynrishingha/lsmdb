@@ -1,104 +1,128 @@
-use std::path::PathBuf;
-
-use clap::{Parser, Subcommand};
+use anyhow::Result;
 use colored::*;
-use miette::{Context, IntoDiagnostic, Result};
-
-use lsmdb::api::StorageEngine;
-
-#[derive(Parser, Debug)]
-#[command(name = "lsmdb", version, about, long_about = None)]
-struct Cli {
-    /// Path to the storage directory (defaults to $HOME/.lsmdb)
-    #[arg(global = true, short, long)]
-    config: Option<PathBuf>,
-
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// Insert a key-value pair
-    #[command(alias = "p")]
-    Put { key: String, value: String },
-
-    /// Get a value by key
-    #[command(alias = "g")]
-    Get { key: String },
-
-    /// Update a value by key
-    #[command(alias = "u")]
-    Update { key: String, value: String },
-
-    /// Remove key-value pair
-    #[command(alias = "rm")]
-    Remove { key: String },
-
-    /// Clear everything
-    Clear,
-
-    /// Set or view config
-    Config {
-        /// Optional path to set as config dir
-        path: Option<PathBuf>,
-    },
-}
+use lsmdb::StorageEngine;
+use std::io::{self, Write};
+use std::path::PathBuf;
+use std::time::Instant;
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    // Respect an explicit db path passed as the first argument so that users
+    // can run multiple isolated databases side-by-side without touching source.
+    let db_path: PathBuf = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".lsmdb")
+        });
 
-    let config_path = cli.config.unwrap_or_else(default_config_path);
+    print_banner(&db_path);
 
-    let mut engine = StorageEngine::new(config_path.clone())
-        .into_diagnostic()
-        .wrap_err_with(|| format!("could not initialize storage at {:?}", config_path))?;
+    let engine = StorageEngine::open(&db_path)
+        .map_err(|e| anyhow::anyhow!("Could not open database at {:?}: {}", db_path, e))?;
 
-    match cli.command {
-        Command::Put { key, value } => {
-            engine
-                .put(&key, &value)
-                .into_diagnostic()
-                .wrap_err_with(|| format!("failed to put key={key}"))?;
+    println!("{}", "Type 'help' for commands. 'exit' to quit.".dimmed());
+    println!();
 
-            success(&format!("put: {key} = {value}"));
+    loop {
+        print!("{} ", "lsmdb>".cyan().bold());
+        io::stdout().flush()?;
+
+        let mut raw = String::new();
+        if io::stdin().read_line(&mut raw)? == 0 {
+            // EOF — e.g. pipe closed or Ctrl-D
+            println!();
+            break;
         }
-        Command::Get { key } => {
-            match engine
-                .get(&key)
-                .into_diagnostic()
-                .wrap_err_with(|| format!("failed to get key={key}"))?
-            {
-                Some(value) => info(&format!("{key} = {value}")),
-                None => warn(&format!("key not found: {key}")),
+        let input = raw.trim();
+
+        if input.is_empty() {
+            continue;
+        }
+
+        // Split into at most 3 parts: <cmd> <key> <value>
+        // The third segment is the entire remainder, so values with spaces are allowed.
+        let mut parts = input.splitn(3, ' ');
+        let cmd = parts.next().unwrap_or("").to_lowercase();
+        let arg1 = parts.next();
+        let arg2 = parts.next();
+
+        match cmd.as_str() {
+            "exit" | "quit" => {
+                println!("{}", "Goodbye!".green());
+                break;
             }
-        }
-        Command::Update { key, value } => {
-            engine
-                .update(&key, &value)
-                .into_diagnostic()
-                .wrap_err_with(|| format!("failed to update key={key}"))?;
-            success(&format!("update: {key} = {value}"));
-        }
-        Command::Remove { key } => {
-            engine
-                .remove(&key)
-                .into_diagnostic()
-                .wrap_err_with(|| format!("failed to remove key={key}"))?;
-            success(&format!("removed: {key}"));
-        }
-        Command::Clear => {
-            engine
-                .clear()
-                .into_diagnostic()
-                .wrap_err("failed to clear storage")?;
-            success("store is cleared");
-        }
-        Command::Config { path } => {
-            if let Some(p) = path {
-                info(&format!("set config path: {:?}", p));
-            } else {
-                info(&format!("current config path: {:?}", config_path));
+
+            "help" => print_help(),
+
+            "put" | "set" | "update" => match (arg1, arg2) {
+                (Some(key), Some(val)) => {
+                    let t = Instant::now();
+                    match engine.put(key, val) {
+                        Ok(_) => println!(
+                            "{} {} {}",
+                            "OK".green().bold(),
+                            key.cyan(),
+                            format!("({} µs)", t.elapsed().as_micros()).dimmed()
+                        ),
+                        Err(e) => eprintln!("{} {}", "error:".red().bold(), e),
+                    }
+                }
+                _ => eprintln!("{}", "usage: put <key> <value>".yellow()),
+            },
+
+            "get" => match arg1 {
+                Some(key) => {
+                    let t = Instant::now();
+                    match engine.get(key.as_bytes()) {
+                        Ok(Some(val)) => {
+                            let elapsed = t.elapsed().as_micros();
+                            let val_str = String::from_utf8_lossy(&val);
+                            println!("{} {} {}", key.cyan(), "→".dimmed(), val_str);
+                            println!("{}", format!("  ({} µs)", elapsed).dimmed());
+                        }
+                        Ok(None) => println!("{}", "(nil)".dimmed()),
+                        Err(e) => eprintln!("{} {}", "error:".red().bold(), e),
+                    }
+                }
+                None => eprintln!("{}", "usage: get <key>".yellow()),
+            },
+
+            "delete" | "remove" | "rm" | "del" => match arg1 {
+                Some(key) => {
+                    let t = Instant::now();
+                    match engine.remove(key) {
+                        Ok(_) => println!(
+                            "{} {} {}",
+                            "OK".green().bold(),
+                            key.cyan(),
+                            format!("({} µs)", t.elapsed().as_micros()).dimmed()
+                        ),
+                        Err(e) => eprintln!("{} {}", "error:".red().bold(), e),
+                    }
+                }
+                None => eprintln!("{}", "usage: delete <key>".yellow()),
+            },
+
+            "clear" => {
+                eprint!("This will destroy ALL data. Confirm? [y/N] ");
+                io::stderr().flush()?;
+                let mut confirm = String::new();
+                io::stdin().read_line(&mut confirm)?;
+                if confirm.trim().eq_ignore_ascii_case("y") {
+                    match engine.clear() {
+                        Ok(_) => println!("{}", "Database wiped.".green().bold()),
+                        Err(e) => eprintln!("{} {}", "error:".red().bold(), e),
+                    }
+                } else {
+                    println!("{}", "Aborted.".dimmed());
+                }
+            }
+
+            _ => {
+                eprintln!("{} '{}'", "unknown command:".red(), cmd);
+                eprintln!("Type '{}' for a list of commands.", "help".cyan());
             }
         }
     }
@@ -106,21 +130,41 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Resolve a default config path depending on OS
-fn default_config_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".lsmdb"))
-        .unwrap_or_else(|| PathBuf::from("."))
+fn print_banner(db_path: &PathBuf) {
+    let border = "━".repeat(45);
+    println!("{}", border.cyan().bold());
+    println!(
+        "{}  {}  {}",
+        "┃".cyan().bold(),
+        "  lsmdb  —  LSM-Tree Storage Engine  ".bold(),
+        "┃".cyan().bold()
+    );
+    println!("{}", border.cyan().bold());
+    println!(
+        "  {} {}",
+        "db path:".dimmed(),
+        db_path.display().to_string().white()
+    );
+    println!();
 }
 
-fn success(msg: &str) {
-    println!("{} {}", "✔".bright_green().bold(), msg.normal());
-}
+fn print_help() {
+    let cmds: &[(&str, &str)] = &[
+        ("put <key> <value>", "Insert or update a key"),
+        ("get <key>", "Retrieve a value by key"),
+        ("delete <key>", "Soft-delete a key (tombstone)"),
+        ("clear", "Destroy all data in the database"),
+        ("help", "Show this message"),
+        ("exit", "Quit"),
+    ];
 
-fn warn(msg: &str) {
-    eprintln!("{} {}", "⚠".bright_yellow().bold(), msg.yellow());
-}
-
-fn info(msg: &str) {
-    println!("{} {}", "➤".bright_cyan().bold(), msg.cyan());
+    println!("{}", "Commands:".bold().underline());
+    for (syntax, desc) in cmds {
+        println!("  {:<28} {}", syntax.cyan(), desc.dimmed());
+    }
+    println!();
+    println!(
+        "  {}  put, set, update are aliases. delete, remove, rm, del are aliases.",
+        "Note:".yellow().bold()
+    );
 }
