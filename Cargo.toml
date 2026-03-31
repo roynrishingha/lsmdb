@@ -27,6 +27,16 @@ snap = "1"
 
 [dev-dependencies]
 tempfile = "3.25.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "storage_engine"
+harness = false
+
+[profile.bench]
+opt-level = 3
+debug = false
+lto = "thin"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
