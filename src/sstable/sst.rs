@@ -2,16 +2,15 @@ use super::{
     block::{BlockBuilder, BlockReader},
     varint,
 };
+use crate::BlockCache;
 use crate::bloom_filter::BloomFilter;
 use crate::constants::{COMPRESSION_NONE, COMPRESSION_SNAPPY};
-use lru::LruCache;
 use memmap2::Mmap;
 use std::{
     fs::{File, OpenOptions},
     io::Write,
     ops::Not,
     path::PathBuf,
-    sync::{Arc, RwLock},
 };
 
 pub struct SSTableBuilder {
@@ -192,11 +191,7 @@ impl SSTableReader {
     /// Looks up `key` in this SSTable, optionally consulting a shared LRU block cache.
     /// Returns `Some(value_bytes)` if found, or `None` if the Bloom Filter or Index
     /// rules out the key.
-    pub fn get(
-        &self,
-        key: &[u8],
-        cache: Option<&Arc<RwLock<LruCache<(u64, u64), Arc<Vec<u8>>>>>>,
-    ) -> Option<Vec<u8>> {
+    pub fn get(&self, key: &[u8], cache: Option<&BlockCache>) -> Option<Vec<u8>> {
         // High speed in-memory Bloom Filter check avoids 99% of useless disk reads
         if !self.bloom_filter.contains(key) {
             return None;
@@ -217,12 +212,11 @@ impl SSTableReader {
             // a block across all open SSTables. We cache the *decompressed* block so subsequent
             // reads can skip both the mmap slice and the Snappy decode step.
             let mut cached_block = None;
-            if let Some(c) = cache {
-                if let Ok(mut lru) = c.write() {
-                    if let Some(block) = lru.get(&(self.id, offset)) {
-                        cached_block = Some(std::sync::Arc::clone(block));
-                    }
-                }
+            if let Some(c) = cache
+                && let Ok(mut lru) = c.write()
+                && let Some(block) = lru.get(&(self.id, offset))
+            {
+                cached_block = Some(std::sync::Arc::clone(block));
             }
 
             let block_data: std::sync::Arc<Vec<u8>> = if let Some(b) = cached_block {
@@ -247,10 +241,10 @@ impl SSTableReader {
                 let arc_data = std::sync::Arc::new(decompressed);
 
                 // INFO: Store the *decompressed* block in the LRU cache
-                if let Some(c) = cache {
-                    if let Ok(mut lru) = c.write() {
-                        lru.put((self.id, offset), std::sync::Arc::clone(&arc_data));
-                    }
+                if let Some(c) = cache
+                    && let Ok(mut lru) = c.write()
+                {
+                    lru.put((self.id, offset), std::sync::Arc::clone(&arc_data));
                 }
                 arc_data
             };

@@ -184,12 +184,11 @@ impl Wal {
         if let Ok(entries) = std::fs::read_dir(&dir_path) {
             for entry in entries.flatten() {
                 let name = entry.file_name();
-                if let Some(name_str) = name.to_str() {
-                    if name_str.ends_with(".log") {
-                        if let Ok(num) = name_str.trim_end_matches(".log").parse::<u64>() {
-                            max_num = max_num.max(num);
-                        }
-                    }
+                if let Some(name_str) = name.to_str()
+                    && name_str.ends_with(".log")
+                    && let Ok(num) = name_str.trim_end_matches(".log").parse::<u64>()
+                {
+                    max_num = max_num.max(num);
                 }
             }
         }
@@ -272,14 +271,12 @@ impl Wal {
         let entries = std::fs::read_dir(&self.dir_path)?;
         for entry in entries.flatten() {
             let name = entry.file_name();
-            if let Some(name_str) = name.to_str() {
-                if name_str.ends_with(".log") {
-                    if let Ok(num) = name_str.trim_end_matches(".log").parse::<u64>() {
-                        if num <= up_to_inclusive {
-                            let _ = std::fs::remove_file(entry.path());
-                        }
-                    }
-                }
+            if let Some(name_str) = name.to_str()
+                && name_str.ends_with(".log")
+                && let Ok(num) = name_str.trim_end_matches(".log").parse::<u64>()
+                && num <= up_to_inclusive
+            {
+                let _ = std::fs::remove_file(entry.path());
             }
         }
         Ok(())

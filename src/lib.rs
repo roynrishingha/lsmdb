@@ -46,6 +46,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 
+pub type BlockCache = Arc<RwLock<lru::LruCache<(u64, u64), Arc<Vec<u8>>>>>;
+
 /// The central coordinator of the LSM-Tree storage engine.
 ///
 /// ## Concurrency Model
@@ -81,7 +83,7 @@ pub struct StorageEngine {
     memtable_capacity: usize,
     next_seq_num: Arc<AtomicU64>,
     db_path: Arc<PathBuf>,
-    block_cache: Arc<RwLock<lru::LruCache<(u64, u64), Arc<Vec<u8>>>>>,
+    block_cache: BlockCache,
     // A Condvar stalls writers when the immutable slot is occupied (flush in progress).
     // Without this, a second flush trigger while one is running would silently drop data.
     // Writers block here instead of racing or returning an error.
@@ -241,13 +243,13 @@ impl StorageEngine {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Immutable MemTable lock poisoned"))?;
 
-            if let Some(imm_memtable) = imm.as_ref() {
-                if let Some(val) = imm_memtable.get(key) {
-                    if val.is_empty() {
-                        return Ok(None);
-                    }
-                    return Ok(Some(val.clone()));
+            if let Some(imm_memtable) = imm.as_ref()
+                && let Some(val) = imm_memtable.get(key)
+            {
+                if val.is_empty() {
+                    return Ok(None);
                 }
+                return Ok(Some(val.clone()));
             }
         }
 

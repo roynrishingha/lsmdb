@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::*;
 use lsmdb::StorageEngine;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 fn main() -> Result<()> {
@@ -130,7 +130,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_banner(db_path: &PathBuf) {
+fn print_banner(db_path: &Path) {
     let border = "━".repeat(45);
     println!("{}", border.cyan().bold());
     println!(

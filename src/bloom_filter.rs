@@ -39,8 +39,8 @@ impl BloomFilter {
     /// `k` is clamped to at least 1 because 0 hash functions would never set any bits,
     /// turning every `contains()` call into a false positive (every key would "exist").
     fn calculate_optimal_params(num_elements: usize, fpr: f64) -> (usize, u32) {
-        let num_bits = (-1.0 * (num_elements as f64) * fpr.ln() / (std::f64::consts::LN_2.powi(2)))
-            .ceil() as usize;
+        let num_bits =
+            (-(num_elements as f64) * fpr.ln() / (std::f64::consts::LN_2.powi(2))).ceil() as usize;
 
         let mut k =
             ((num_bits as f64 / num_elements as f64) * std::f64::consts::LN_2).ceil() as u32;

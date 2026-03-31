@@ -188,17 +188,17 @@ impl<K: Ord + Default, V: Default> SkipList<K, V> {
 
         // 1. Initialize the new node's next pointers FIRST.
         // This ensures readers jumping onto this node mid-flight will see valid `next` paths.
-        for i in 0..height {
-            let next_node = unsafe { (*prev[i]).next_ptr(i).load(Ordering::Relaxed) };
+        for (i, &prev_node) in prev.iter().enumerate().take(height) {
+            let next_node = unsafe { (*prev_node).next_ptr(i).load(Ordering::Relaxed) };
             unsafe { (*new_node).next_ptr(i).store(next_node, Ordering::Relaxed) };
         }
 
         // 2. Link the previous nodes to the new node, from BOTTOM to TOP.
         // Release ordering guarantees all writes to new_node are visible to readers
         // who acquire these next pointers.
-        for i in 0..height {
+        for (i, &prev_node) in prev.iter().enumerate().take(height) {
             unsafe {
-                (*prev[i]).next_ptr(i).store(new_node, Ordering::Release);
+                (*prev_node).next_ptr(i).store(new_node, Ordering::Release);
             }
         }
 

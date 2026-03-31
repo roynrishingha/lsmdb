@@ -46,7 +46,7 @@ impl BlockBuilder {
         varint::encode_u32(unshared_length as u32, &mut self.buffer);
         varint::encode_u32(value.len() as u32, &mut self.buffer);
         self.buffer.extend_from_slice(&key[shared_length..]);
-        self.buffer.extend_from_slice(&value);
+        self.buffer.extend_from_slice(value);
 
         self.counter += 1;
         self.last_key = key.to_vec();
