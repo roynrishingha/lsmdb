@@ -70,7 +70,7 @@ Traditional storage engines (B-Trees) perform random in-place writes — slow on
 
 ```toml
 [dependencies]
-lsmdb = "0.5"
+lsmdb = "1"
 ```
 
 ```rust
