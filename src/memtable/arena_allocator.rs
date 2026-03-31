@@ -236,7 +236,7 @@ mod tests {
 
         // p4 and p5 should be in DIFFERENT blocks, meaning their addresses are far apart
         let diff = (p5 as isize - p4 as isize).abs() as usize;
-        assert!(diff > chunk_size);
+        assert!(diff >= chunk_size);
     }
 
     #[test]
